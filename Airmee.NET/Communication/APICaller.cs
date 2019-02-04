@@ -15,104 +15,81 @@ using static System.String;
 
 namespace AirmeeDotNET.Communication
 {
-    public class APICaller
+    internal class APICaller
     {
-        private readonly HttpClient _client;
+        private HttpClient _client;
 
-        public APICaller(string jwtToken, EnvironmentType environment)
+        internal static APICaller CreateCaller(string jwtToken, EnvironmentType environment)
         {
-            _client = new HttpClient();
-            //_client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-            _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(jwtToken);
-            _client.BaseAddress = new Uri(environment == EnvironmentType.Live ? "https://api.airmee.com/integration/" : "https://staging-api.airmee.com/integration/");
+            var caller = new APICaller();
+            caller.Initialize(jwtToken, environment);
+
+            return caller;
         }
 
-        public async Task<ScheduleCollection> GetDeliveryIntervalsAsync(string country, string zipCode, string placeId, DateTime? firstDeliveryDay)
+        internal async Task<ScheduleCollection> GetDeliveryIntervalsAsync(string country, string zipCode, string placeId, DateTime? firstDeliveryDay)
         {
-            var paramaters = new NameValueCollection
+            var parameters = new NameValueCollection
                              {
-                                 {
-                                     "country", country
-                                 },
-                                 {
-                                     "zip_code", zipCode
-                                 },
-                                 {
-                                     "place_id", placeId
-                                 },
-                                 {
-                                     "date", firstDeliveryDay?.Date.ToString("yyyy-MM-dd")
-                                 }
-                             };
-            if (firstDeliveryDay != null)
-            {
-                return JsonConvert.DeserializeObject<ScheduleCollection>(await CallAsync("checkout_delivery_intervals_for_zip_code", Method.Get, paramaters));
-            }
-
-            return JsonConvert.DeserializeObject<ScheduleCollection>(await CallAsync("delivery_intervals_for_zip_code", Method.Get, paramaters));
-        }
-
-        public async Task<OrderStatus> GetOrderStatusAsync(string orderId)
-        {
-            var paramaters = new NameValueCollection
-                             {
-                                 {
-                                     "order_Id", orderId
-                                 }
+                                 {"country", country}, {"zip_code", zipCode}, {"place_id", placeId}, {"date", firstDeliveryDay?.Date.ToString("yyyy-MM-dd")}
                              };
 
-            return JsonConvert.DeserializeObject<OrderStatus>(await CallAsync("order_status", Method.Get, paramaters));
+            return firstDeliveryDay != null
+                ? JsonConvert.DeserializeObject<ScheduleCollection>(await CallAsync("checkout_delivery_intervals_for_zip_code", Method.Get, parameters))
+                : JsonConvert.DeserializeObject<ScheduleCollection>(await CallAsync("delivery_intervals_for_zip_code", Method.Get, parameters));
         }
 
-        public async Task<ProductThresholdValues> GetProductThresholdsAsync(string placeId)
+        internal async Task<OrderStatus> GetOrderStatusAsync(string orderId)
         {
-            var paramaters = new NameValueCollection
-                             {
-                                 {
-                                     "place_id", placeId
-                                 }
-                             };
-
-            return JsonConvert.DeserializeObject<ProductThresholds>(await CallAsync("product_threshold_for_place", Method.Get, paramaters)).Values;
+            return JsonConvert.DeserializeObject<OrderStatus>(await CallAsync("order_status", Method.Get, new NameValueCollection {{"order_Id", orderId}}));
         }
 
-        public async Task<OrderTracking> SendOrderAsync(Order order)
+        internal async Task<ProductThresholdValues> GetProductThresholdsAsync(string placeId)
         {
-            var paramaters = new NameValueCollection();
-
-            return JsonConvert.DeserializeObject<OrderResponse>(await CallAsync("request_delivery", Method.Post, paramaters, JsonConvert.SerializeObject(order))).Order;
+            return JsonConvert
+                   .DeserializeObject<ProductThresholds>(await CallAsync("product_threshold_for_place", Method.Get,
+                                                                         new NameValueCollection {{"place_id", placeId}})).Values;
         }
 
-        private async Task<string> CallAsync(string endpoint, string method, NameValueCollection additionalParamaters, string payload = "")
+        internal async Task<OrderTracking> SendOrderAsync(Order order)
         {
-            var queryParams = Join("&", additionalParamaters.AllKeys.Select(a => a + "=" + HttpUtility.UrlEncode(additionalParamaters[a])));
+            return JsonConvert
+                   .DeserializeObject<OrderResponse>(await CallAsync("request_delivery", Method.Post, new NameValueCollection(),
+                                                                     JsonConvert.SerializeObject(order))).Order;
+        }
 
-            var response = new HttpResponseMessage();
+        private async Task<string> CallAsync(string endpoint, string method, NameValueCollection additionalParameters, string payload = "")
+        {
+            HttpResponseMessage response;
+            var requestUri = $"{endpoint}?{CreateQueryString(additionalParameters)}";
+
             switch (method)
             {
                 case Method.Get:
-                    response = await _client.GetAsync($"{endpoint}?{queryParams}");
-                    if (!response.IsSuccessStatusCode)
-                    {
-                        await HandleErrorAsync(response);
-                    }
+                    response = await _client.GetAsync(requestUri);
+                    break;
 
-                    return await response.Content.ReadAsStringAsync();
                 case Method.Post:
-                    var content = new StringContent(payload, Encoding.UTF8, "application/json");
-                    response = await _client.PostAsync($"{endpoint}?{additionalParamaters}", content);
-                    return await response.Content.ReadAsStringAsync();
+                    response = await _client.PostAsync(requestUri, new StringContent(payload, Encoding.UTF8, "application/json"));
+                    break;
+
                 default:
                     throw new ArgumentException($"Method {method} is not supported");
             }
+
+            if (!response.IsSuccessStatusCode)
+            {
+                await HandleErrorAsync(response);
+            }
+
+            return await response.Content.ReadAsStringAsync();
         }
 
-        private async Task HandleErrorAsync(HttpResponseMessage response)
+        private static async Task HandleErrorAsync(HttpResponseMessage response)
         {
-            var raw = await response.Content.ReadAsStringAsync();
-            var error = JsonConvert.DeserializeObject<Error>(raw);
+            var error = JsonConvert.DeserializeObject<Error>(await response.Content.ReadAsStringAsync());
 
-            if (((int) response.StatusCode).ToString().StartsWith("5"))
+            if ((int) response.StatusCode >= 500)
             {
                 throw new ServerError(error.Details);
             }
@@ -121,15 +98,36 @@ namespace AirmeeDotNET.Communication
             {
                 case ErrorStrings.InsufficientParamaters:
                     throw new InsufficientParametersException(error.Details);
+
                 case ErrorStrings.AddressParsingError:
                     throw new AddressException(error.Details);
+
                 case ErrorStrings.DeliveryCannotBeRequested:
                     throw new DeliveryException(error.Details);
+
                 case ErrorStrings.DeliveryCannotBeScheduled:
                     throw new DeliveryException(error.Details);
+
                 case ErrorStrings.PlaceIdDoesNotExist:
                     throw new InvalidParametersException(error.Details);
+
+                default:
+                    throw new Exception(error.Details);
             }
+        }
+
+        private static string CreateQueryString(NameValueCollection collection)
+        {
+            return Join("&", collection.AllKeys.Select(a => a + "=" + HttpUtility.UrlEncode(collection[a])));
+        }
+
+        private void Initialize(string jwtToken, EnvironmentType environment)
+        {
+            _client = new HttpClient();
+            _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(jwtToken);
+            _client.BaseAddress = new Uri(environment == EnvironmentType.Live
+                                              ? "https://api.airmee.com/integration/"
+                                              : "https://staging-api.airmee.com/integration/");
         }
     }
 }
