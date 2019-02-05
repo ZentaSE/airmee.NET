@@ -17,10 +17,9 @@ namespace AirmeeDotNET
         /// <param name="jwtToken">The long lived JWT of the place</param>
         /// <param name="placeId">Id of the pickup place from where the request originates</param>
         /// <param name="environment">States if this is Test or Live Environment</param>
-        /// <param name="floatErrors">Deactivate the custom error handler, and throw full exceptions</param>
         public Client(string jwtToken, string placeId, EnvironmentType environment)
         {
-            _apiCaller = new APICaller(jwtToken, environment);
+            _apiCaller = APICaller.CreateCaller(jwtToken, environment);
             _defaultPlaceId = placeId;
         }
 
