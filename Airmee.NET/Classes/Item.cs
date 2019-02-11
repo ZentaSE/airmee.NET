@@ -25,7 +25,7 @@ namespace AirmeeDotNET.Classes
         [JsonProperty(PropertyName = "unit_price")]
         public Price UnitPrice { get; set; }
 
-        [JsonProperty(PropertyName = "quanity")]
+        [JsonProperty(PropertyName = "quantity")]
         public int Quantity { get; set; }
     }
 }
