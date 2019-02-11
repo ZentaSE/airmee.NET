@@ -10,13 +10,13 @@ namespace AirmeeDotNET.Classes
         [JsonProperty(PropertyName = "city")]
         public string City { get; set; }
 
-        [JsonProperty(PropertyName = "street_and_number")]
+        [JsonProperty(PropertyName = "zip_code")]
         public string ZipCode { get; set; }
 
         [JsonProperty(PropertyName = "country")]
         public string Country { get; set; }
 
-        [JsonProperty(PropertyName = "street_and_number")]
+        [JsonProperty(PropertyName = "apartment")]
         public string ApartmentNumber { get; set; }
 
         [JsonProperty(PropertyName = "floor")]
@@ -28,7 +28,7 @@ namespace AirmeeDotNET.Classes
         [JsonProperty(PropertyName = "latitude")]
         public string Latitude { get; set; }
 
-        [JsonProperty(PropertyName = "street_and_number")]
+        [JsonProperty(PropertyName = "longitude")]
         public string Longitude { get; set; }
     }
 }

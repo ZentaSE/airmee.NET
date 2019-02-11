@@ -76,5 +76,16 @@ namespace AirmeeDotNET
         {
             return await _apiCaller.GetProductThresholdsAsync(placeId);
         }
+
+        /// <summary>
+        /// Place and order dor delivery
+        /// </summary>
+        /// <param name="order">The full orderdata</param>
+        /// <returns>Tracking data</returns>
+
+        public async Task<OrderTracking> RequestDeliveryAsync(Order order)
+        {
+            return await _apiCaller.SendOrderAsync(order);
+        }
     }
 }
